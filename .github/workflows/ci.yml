@@ -1,0 +1,84 @@
+name: CI
+
+# When dispatched from the F´ orchestrator the run title carries the dispatch id so the
+# orchestrator can find this run (the dispatch API returns no run id). Empty run-name falls
+# back to GitHub's default title for push/pull_request runs.
+run-name: ${{ github.event_name == 'workflow_dispatch' && format('ext-ci {0} ({1}@{2})', inputs.dispatch_id, inputs.fprime_repository, inputs.fprime_ref) || '' }}
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      fprime_repository:
+        description: "F´ repository to overlay (<owner>/<repo>); a fork for fork PRs"
+        type: string
+        default: JPL-Devin/fprime-test-ci-fprime
+      fprime_ref:
+        description: "F´ ref to overlay; the orchestrator always passes an exact commit SHA"
+        type: string
+        default: main
+      dispatch_id:
+        description: "Correlation id set by the orchestrator (echoed in run-name)"
+        type: string
+        default: ""
+
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.dispatch_id || github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  FPRIME_REPOSITORY: ${{ inputs.fprime_repository || 'JPL-Devin/fprime-test-ci-fprime' }}
+  FPRIME_REF: ${{ inputs.fprime_ref || 'main' }}
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: "Overlay F´ revision"
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.FPRIME_REPOSITORY }}
+          ref: ${{ env.FPRIME_REF }}
+          path: lib/fprime
+      - name: Build
+        run: ./ci/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build
+          path: build-artifacts
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: "Overlay F´ revision"
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.FPRIME_REPOSITORY }}
+          ref: ${{ env.FPRIME_REF }}
+          path: lib/fprime
+      - run: ./ci/ut.sh
+
+  integration:
+    name: Integration (${{ matrix.platform }})
+    needs: build
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [ sim-x86, sim-arm ]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: build
+          path: build-artifacts
+      - run: ./ci/int.sh ${{ matrix.platform }}
