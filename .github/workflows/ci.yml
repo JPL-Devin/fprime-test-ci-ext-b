@@ -1,8 +1,7 @@
 name: CI
 
-# When dispatched from the F´ orchestrator the run title carries the dispatch id so the
-# orchestrator can find this run (the dispatch API returns no run id). Empty run-name falls
-# back to GitHub's default title for push/pull_request runs.
+# When dispatched from the F´ orchestrator the run title carries the dispatch id (readability,
+# and a fallback for API servers whose dispatch call does not return the run id).
 run-name: ${{ github.event_name == 'workflow_dispatch' && format('ext-ci {0} ({1}@{2})', inputs.dispatch_id, inputs.fprime_repository, inputs.fprime_ref) || '' }}
 
 on:
@@ -19,6 +18,10 @@ on:
         description: "F´ ref to overlay; the orchestrator always passes an exact commit SHA"
         type: string
         default: main
+      fprime_pr_number:
+        description: "F´ PR number being tested (empty for branch runs); for sibling pr-<N> lookups"
+        type: string
+        default: ""
       dispatch_id:
         description: "Correlation id set by the orchestrator (echoed in run-name)"
         type: string
